@@ -24,8 +24,7 @@ brew install terminal-notifier
 
 Press `Ctrl+C` to stop the reminder.
 
-## Automatic terminal startup
+## TODO
 
-The script can be started from `.zshrc`, but it should first be given a
-single-instance lock. This prevents every open terminal session from starting
-another copy of the reminder.
+- Add automatic startup from `.zshrc` with a single-instance lock to prevent
+  multiple terminal sessions from starting duplicate reminders.
