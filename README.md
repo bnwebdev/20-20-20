@@ -11,7 +11,11 @@ menu-bar item.
 brew install terminal-notifier
 ```
 
-SwiftBar is optional; install it if you want the menu-bar controls.
+SwiftBar is optional; install it for menu-bar controls:
+
+```sh
+brew install swiftbar
+```
 
 ## Run now
 
