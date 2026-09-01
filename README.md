@@ -11,6 +11,9 @@ menu-bar item.
 brew install terminal-notifier
 ```
 
+The reminder automatically finds Homebrew installations in both `/opt/homebrew`
+(Apple Silicon) and `/usr/local` (Intel), including when started by `launchd`.
+
 SwiftBar is optional; install it for menu-bar controls:
 
 ```sh
