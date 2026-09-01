@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+
+# Control the 20-20-20 reminder's paused state. All times use the local timezone.
+set -euo pipefail
+
+readonly APP_NAME="20-20-20"
+readonly STATE_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/$APP_NAME"
+readonly STATE_FILE="$STATE_DIR/state"
+readonly WORKDAY_START="${REMINDER_WORKDAY_START:-09:00}"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  20-20-20 status
+  20-20-20 is-paused
+  20-20-20 pause <duration>
+  20-20-20 pause workday
+  20-20-20 resume
+
+Durations are a positive whole number followed by m or h, such as 30m or 2h.
+"workday" pauses until the next Monday-Friday workday start (09:00 by default).
+Set REMINDER_WORKDAY_START=HH:MM to choose a different start time.
+EOF
+}
+
+ensure_state_dir() { mkdir -p "$STATE_DIR"; }
+
+read_disabled_until() {
+  [ -f "$STATE_FILE" ] || return 1
+  local line timestamp
+  line="$(<"$STATE_FILE")"
+  timestamp="${line#disabled_until=}"
+  [[ "$line" == disabled_until=* && "$timestamp" =~ ^[0-9]+$ ]] || return 1
+  printf '%s\n' "$timestamp"
+}
+
+write_disabled_until() {
+  local timestamp="$1" temp_file
+  ensure_state_dir
+  temp_file="$(mktemp "$STATE_DIR/state.XXXXXX")"
+  printf 'disabled_until=%s\n' "$timestamp" >"$temp_file"
+  mv -f "$temp_file" "$STATE_FILE"
+}
+
+clear_pause() { write_disabled_until 0; }
+
+format_timestamp() { date -r "$1" '+%Y-%m-%d %H:%M'; }
+
+paused_until() {
+  local timestamp now
+  timestamp="$(read_disabled_until)" || return 1
+  now="$(date +%s)"
+  [ "$timestamp" -gt "$now" ] || return 1
+  printf '%s\n' "$timestamp"
+}
+
+duration_to_seconds() {
+  local duration="$1" amount unit
+  if [[ "$duration" =~ ^([1-9][0-9]*)(m|h)$ ]]; then
+    amount="${BASH_REMATCH[1]}"
+    unit="${BASH_REMATCH[2]}"
+    if [ "$unit" = "m" ]; then printf '%s\n' "$((amount * 60))"; else printf '%s\n' "$((amount * 60 * 60))"; fi
+  else
+    echo "Invalid duration: $duration (use e.g. 30m or 2h)" >&2
+    exit 2
+  fi
+}
+
+next_workday_timestamp() {
+  local today candidate weekday offset
+  today="$(date '+%Y-%m-%d')"
+  candidate="$(date -j -f '%Y-%m-%d %H:%M' "$today $WORKDAY_START" '+%s' 2>/dev/null)" || {
+    echo "Invalid REMINDER_WORKDAY_START: $WORKDAY_START (use HH:MM)" >&2; exit 2;
+  }
+  weekday="$(date '+%u')"
+  if [ "$weekday" -le 5 ] && [ "$candidate" -gt "$(date +%s)" ]; then printf '%s\n' "$candidate"; return; fi
+  for offset in 1 2 3 4 5 6 7; do
+    candidate="$(date -j -v+"$offset"d -f '%Y-%m-%d %H:%M' "$today $WORKDAY_START" '+%s')"
+    weekday="$(date -r "$candidate" '+%u')"
+    if [ "$weekday" -le 5 ]; then printf '%s\n' "$candidate"; return; fi
+  done
+}
+
+command="${1:-}"
+case "$command" in
+  status)
+    if timestamp="$(paused_until)"; then printf 'Paused until %s\n' "$(format_timestamp "$timestamp")"; else echo "Enabled"; fi
+    ;;
+  is-paused) paused_until >/dev/null ;;
+  pause)
+    value="${2:-}"; [ -n "$value" ] || { usage >&2; exit 2; }
+    if [ "$value" = "workday" ]; then timestamp="$(next_workday_timestamp)"; else timestamp="$(( $(date +%s) + $(duration_to_seconds "$value") ))"; fi
+    write_disabled_until "$timestamp"; printf 'Paused until %s\n' "$(format_timestamp "$timestamp")"
+    ;;
+  resume) clear_pause; echo "Enabled" ;;
+  -h|--help|help|"") usage ;;
+  *) echo "Unknown command: $command" >&2; usage >&2; exit 2 ;;
+esac
